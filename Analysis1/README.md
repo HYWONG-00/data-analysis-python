@@ -1,4 +1,4 @@
-# data-analysis-python
+# Analysis 1
 ## Question: What is the relationship between total income and outcome (expenses) for different business units?
 ```
 import pandas as pd
