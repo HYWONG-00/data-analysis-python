@@ -25,3 +25,43 @@ aggregate_financial_performance.sort_values(ascending=False, by=['Calculated Net
 4) Some units, such as Alquileres Varios, shows a net income of 0, which means income and expenses over period are balance. The organizations should concern on their operational improvement as well.
 5) The above trial provides a broad perspective on the financial health and performance of each business unit, showing which operations needs improvement and which operations are profitable. Next, we should dive deeper into the trends over time for specific units of interest, to understand the financial outcome behind better.
 
+# Question: Draw a line chart to show the distribution for monthly income and outcome across the period
+```
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pandas.tseries.offsets import MonthEnd
+import locale
+
+# Set the locale to Spanish to handle month names in Spanish
+locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+
+# Try converting 'Período' to datetime again
+try:
+    cash_flow_data['Período'] = pd.to_datetime(cash_flow_data['Período'], format='%B %Y', errors='coerce') + MonthEnd(1)
+except ValueError:
+    # In case of an error, reset the locale and inform the user
+    locale.setlocale(locale.LC_TIME, 'C')
+    raise
+
+# Reset the locale back to default
+locale.setlocale(locale.LC_TIME, 'C')
+
+# Aggregate data by month again
+monthly_data = cash_flow_data.groupby(cash_flow_data['Período']).agg({'Ingresos': 'sum', 'Egresos': 'sum'})
+
+# Plotting the updated data
+plt.figure(figsize=(15, 6))
+plt.plot(monthly_data.index, monthly_data['Ingresos'], label='Ingresos', color='blue')
+plt.plot(monthly_data.index, monthly_data['Egresos'], label='Egresos', color='red')
+plt.title('Monthly Income (Ingresos) and Outcome (Egresos)')
+plt.xlabel('Month')
+plt.ylabel('Amount')
+plt.legend()
+plt.grid(True)
+sns.despine()
+
+plt.show()
+```
+## Highlights:
+
+
