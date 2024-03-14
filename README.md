@@ -1,5 +1,23 @@
 # data-analysis-python
 ## Question: What is the relationship between total income and outcome (expenses) for different business units?
+```
+import pandas as pd
+
+# Load the CSV file
+file_path = 'business_unit_system_cash_flow.csv'
+df = pd.read_csv(file_path)
+
+# Aggregate financial performance for each business unit
+aggregate_financial_performance = df.groupby('Unidad de Negocio').agg({
+    'Ingresos': 'sum',
+    'Egresos': 'sum',
+    'Total': 'sum'
+}).reset_index()
+
+# Calculate Net Income as Income - Expenses just to confirm the 'Total' column matches this calculation (it should)
+aggregate_financial_performance['Calculated Net Income'] = aggregate_financial_performance['Ingresos'] - aggregate_financial_performance['Egresos']
+aggregate_financial_performance.sort_values(ascending=False, by=['Calculated Net Income'])
+```
 ## Highlights:
 1) Desarrolladora GR shows the highest net income, approximately 74,201,722 in total, which indicates it has strong financial performance in the system.
 2) Paseo Carmelina, Paseo Cortaderas, Paseo Retamas, and Paseo ServiCenter also show significant positive net incomes, which means these opeartions are profitable.
