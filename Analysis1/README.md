@@ -25,7 +25,7 @@ aggregate_financial_performance.sort_values(ascending=False, by=['Calculated Net
 4) Some units, such as Alquileres Varios, shows a net income of 0, which means income and expenses over period are balance. The organizations should concern on their operational improvement as well.
 5) The above trial provides a broad perspective on the financial health and performance of each business unit, showing which operations needs improvement and which operations are profitable. Next, we should dive deeper into the trends over time for specific units of interest, to understand the financial outcome behind better.
 
-# Question: Draw a line chart to show the distribution for monthly income and outcome across the period
+## Question: Draw a line chart to show the distribution for monthly income and outcome across the period
 ```
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -63,5 +63,8 @@ sns.despine()
 plt.show()
 ```
 ## Highlights:
+1) Overall, the month income and outcome is quite balance across the period, the organization might wants to focus on improvement of its operations.
+2) There is sudden increase in for both income and outcome in 2022-04 which indicates there is strong business operations on-going during that period. 
+3) There is another unexpected rise in company's income around 2022-07, which boosts the company's revenue during that time, as the expenses remains relatively low.
 
 
