@@ -1,0 +1,219 @@
+---
+title: "SATAC"
+output: pdf_document
+date: "2025-01-13"
+---
+
+```{r}
+install.packages("vip")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r import libraries}
+#Load the required packages
+library(tidyverse)
+library("readxl")
+library(tidymodels)
+library(modelr)
+# library(glmnet)
+# library(themis)
+library(stats)
+
+
+all_pref <- read.csv("./All Preferences (single institution view).csv")
+all_changespref <- read.csv("./Preference changes between offer rounds(in).csv", skip=6)
+postcode_ranking_df <- read_excel("./Postcode SES Values.xlsx")
+
+# Main dataset
+all_preferences <- all_pref %>%
+  rename("ref_num" = "ref_num1",
+         "faculty" = "attribute_value")
+postcode_ranking_df <- postcode_ranking_df %>%
+  rename("postcode"="2021 Postal Area (POA) Code",
+    "postcode_score"="Decile")
+```
+
+```{r preparing datasets}
+# map this to all_preferences to get info. eg: postcode, school, gender, atar, etc.
+all_changes <- all_changespref %>%
+  # add new column, changed
+  mutate(changed=ifelse(grepl("NEW", old_course_short_name), 0, 1)) %>%
+  mutate(changed=as.factor(changed)) %>%
+  dplyr::select(ref_num, changed) 
+
+ori_combined_df <- all_preferences %>%
+  left_join(all_changes, by = "ref_num")
+
+# You must join the tables first, then do the filtering (Else, you will get many null values :')
+ori_combined_df1 <- ori_combined_df %>%
+  filter(
+    offering_name == "Semester 1",
+    campus_code == "UA",
+    applicant_type == "SCH",
+    preference_number1 == 1,
+    (ssr_rank_value >= 0 & ssr_rank_value <= 100)) %>%
+  dplyr::select(-offering_name, -campus_code, -applicant_type, -preference_number1) 
+
+# Replace null values in "changed" with 0
+ori_combined_df1 <- ori_combined_df1 %>%
+  mutate(changed = if_else(is.na(as.numeric(as.character(changed))), 0, as.numeric(changed))) %>%
+  mutate(changed = if_else(as.numeric(changed) == 1, 0, as.numeric(changed))) %>%
+  mutate(changed = if_else(as.numeric(changed) == 2, 1, as.numeric(changed)))
+
+# Remove quota program
+ori_combined_df2 <- ori_combined_df1 %>%
+  filter(!grepl("B ORAL HEALTH", course_short_name1, ignore.case = TRUE)) %>%
+  filter(!grepl("B MED STUDIES/D MED (BONDED)", course_short_name1, ignore.case = TRUE)) %>%
+  filter(!grepl("B MED STUDIES/D MED", course_short_name1, ignore.case = TRUE)) %>%
+  filter(!grepl("B DENTAL SURGERY", course_short_name1, ignore.case = TRUE)) %>%
+  filter(!grepl("VET BIOSCIENCE", course_short_name1, ignore.case = TRUE)) 
+
+
+table(ori_combined_df1$changed)
+2967/204
+table(ori_combined_df2$changed)
+2608/182 # still very bias - do resampling
+```
+
+## Data cleaning
+```{r}
+# drop these 3 cols cuz almost whole column are null values
+sapply(ori_combined_df2, function(x) sum(is.na(x)))
+# drop those columns with only one unique value
+sapply(ori_combined_df2, function(x) length(unique(x)) == 1)
+
+# change datatypes 
+ori_combined_df3 <- ori_combined_df2 %>%
+  mutate(date_submitted=as.Date(date_submitted, format = "%d/%m/%Y"),
+         pref_date=as.Date(pref_date, format = "%d/%m/%Y"),
+         gender=as.factor(gender),
+         citizenship=as.factor(citizenship),
+         state=as.factor(state),
+         course_level_name = as.factor(course_level_name),
+         ssr_rank_value=as.double(ssr_rank_value),
+         changed = as.factor(changed)
+         ) %>%
+  mutate(
+    date_submitted_month=format(date_submitted, "%b"),
+    pref_date_month=format(pref_date, "%b")    
+    )
+```
+
+## Data Pre-processing and Modelling
+```{r Data Pre-processing and Modelling}
+# Drop columns (TBD)
+combined_df <- ori_combined_df3 %>%
+  dplyr::select(-c(Textbox84, country, campus_name, stream_code, organisation_code, organisation_name )) %>%
+  dplyr::select(
+    -ref_num,
+    -institution_course_code,
+    -course_short_name1,
+    -stream_name,
+    -ssr_name,
+    -school_name,
+    -pref_elig_reason,
+    -date_submitted,
+    -pref_date
+    )
+
+summary(combined_df$changed)
+any(is.na(combined_df$changed))
+combined_df <- combined_df[!is.na(combined_df$changed),]
+combined_df <- na.omit(combined_df)
+
+combined_df$qual_end_year <- as.numeric(as.character(combined_df$qual_end_year))
+summary(combined_df$changed)
+```
+
+```{r logistic regression - backward stepwise selection}
+# Data splitting
+train_test_split <- initial_split(combined_df, strata = changed)
+
+train_data <- training(train_test_split)
+test_data <- testing(train_test_split)
+
+simple_glm <- glm(changed ~ 1, data = combined_df, family = "binomial")
+summary(simple_glm)
+scope=changed ~ (gender + citizenship + ssr_rank_value + faculty + preference_eligibility_value + atsi)
+library(MASS)
+model <- stepAIC(simple_glm, scope=scope, direction='both', trace=FALSE)
+
+
+#view results of backward stepwise regression
+anova(model, test = "Chisq")
+summary(model)
+
+# Pr(changed=1) = 0.973792 + (1.46 * 10^-11) * ssr_rank_value + 0.000187 * faculty_health + 0.010098  * faculty_set
+```
+
+
+
+
+```{r logistic regression - classification}
+# Data splitting
+train_test_split <- initial_split(combined_df, strata = changed)
+
+train_data <- training(train_test_split)
+test_data <- testing(train_test_split)
+
+# Data pre-processing
+recipe <- recipe(changed ~ ., data = train_data) %>% 
+  step_dummy(all_nominal_predictors()) %>%
+  step_impute_median(all_numeric_predictors()) %>%
+  step_normalize(all_predictors()) %>%
+  step_smote(changed, over_ratio = 1) 
+
+train_data_processed  <- recipe %>% prep() %>% bake(new_data = NULL)
+
+# just checking
+# summary(train_data_processed)
+
+# Modelling
+model <- logistic_reg(penalty = tune(), mixture = 0) %>%
+  set_mode("classification") %>%
+  set_engine("glmnet")
+
+workflow <- workflow() %>%
+  add_model(model) %>%
+  add_recipe(recipe)
+
+penalty_grid <- grid_regular(penalty(), levels = 30)
+
+cv <- vfold_cv(train_data, strata = changed)
+
+library(doParallel)
+doParallel::registerDoParallel()
+data_tune <- tune_grid(object = workflow,
+                       resamples = cv,
+                       grid = penalty_grid)
+
+data_tune %>% collect_metrics()
+
+# Best model
+best_model <- select_best(data_tune, metric = "accuracy")
+
+final_model <- workflow %>%
+  finalize_workflow(best_model)
+
+# Last fit
+last_fit <- final_model %>% last_fit(train_test_split)
+last_fit %>% collect_metrics()
+
+# Feature importance
+library(vip)
+last_fit %>%
+  extract_fit_engine() %>%
+  vip() +
+  labs(caption = "Feature Importance")
+```
+
+
+
+
+
+WHAT I DID SO FAR:
+
+So, I combine the table showing "1st pref. changes" with "all preferences", then I filter for SCH, 1st pref. and UA. And then, use logistic regression to see the significant value
